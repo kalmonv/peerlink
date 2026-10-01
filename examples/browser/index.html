@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Peerlink Browser Demo</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 0 10px; }
+    .card { border: 1px solid #ccc; padding: 15px; margin-bottom: 15px; border-radius: 6px; }
+    #log { background: #f4f4f4; height: 120px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 13px; }
+    progress { width: 100%; height: 20px; }
+    .media-container video { width: 100%; border-radius: 6px; background: #000; margin-top: 10px; }
+    .media-controls { display: flex; gap: 10px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Peerlink P2P Demo</h1>
+  <div id="status" class="card"><strong>Status:</strong> Aguardando conexão nos trackers...</div>
+
+  <div class="card">
+    <h3>1. Mensagens / Chat</h3>
+    <input type="text" id="msgInput" placeholder="Digite uma mensagem" style="width: 70%;">
+    <button id="sendBtn">Enviar</button>
+  </div>
+
+  <div class="card">
+    <h3>2. Transferência de Arquivo</h3>
+    <input type="file" id="filePicker">
+    <button id="sendFileBtn">Enviar Arquivo</button>
+    <div style="margin-top: 10px;">
+      <progress id="fileProgress" value="0" max="100"></progress>
+      <span id="progressText">0%</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>3. Stream de Texto ao Vivo</h3>
+    <button id="startStreamBtn">Iniciar Stream Contínuo</button>
+    <button id="stopStreamBtn" disabled>Parar Stream</button>
+    <div id="streamOutput" style="background: #222; color: #0f0; padding: 8px; margin-top: 8px; font-family: monospace; height: 80px; overflow-y: auto;"></div>
+  </div>
+
+  <div class="card">
+    <h3>4. Transmissão de Mídia (Câmera/Tela)</h3>
+    <div class="media-controls">
+      <button id="shareCameraBtn">Compartilhar Câmera</button>
+      <button id="shareScreenBtn">Compartilhar Tela</button>
+      <button id="stopMediaBtn" disabled>Parar Transmissão</button>
+    </div>
+    <div id="mediaContainer" class="media-container"></div>
+  </div>
+
+  <div class="card">
+    <h3>Log do Sistema</h3>
+    <div id="log"></div>
+  </div>
+
+  <script type="module">
+    import Peerlink from '/src/browser.js';
+
+    const logEl = document.getElementById('log');
+    function log(msg) {
+      logEl.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    const p = new Peerlink({
+      identifier: 'peerlink-demo-room',
+      trackers: ['wss://tracker.openwebtorrent.com', 'wss://tracker.webtorrent.dev']
+    });
+
+    let currentPeer = null;
+    let activeStreamWriter = null;
+    let streamInterval = null;
+    let activeMediaSession = null; // Armazena a sessão de mídia local
+
+    p.on('trackerconnect', url => log(`Conectado ao tracker: ${url}`));
+    p.on('trackerwarning', err => log(`Aviso do tracker: ${err.message}`));
+
+    p.on('peerconnect', peer => {
+      currentPeer = peer;
+      document.getElementById('status').innerHTML = `<strong>Status:</strong> Conectado com peer: <code>${peer.id}</code>`;
+      log(`Peer conectado: ${peer.id}`);
+    });
+
+    p.on('peerclose', peer => {
+      if (currentPeer === peer) currentPeer = null;
+      document.getElementById('status').innerHTML = '<strong>Status:</strong> Peer desconectado';
+      log(`Peer desconectado: ${peer.id}`);
+      
+      // Limpa os vídeos se o peer cair
+      document.getElementById('mediaContainer').innerHTML = '';
+    });
+
+    // ==========================================
+    // 1. CHAT
+    // ==========================================
+    p.on('msg', (peer, msg) => {
+      log(`Mensagem recebida de ${peer.id}: ${msg.data}`);
+    });
+
+    document.getElementById('sendBtn').onclick = async () => {
+      const text = document.getElementById('msgInput').value;
+      if (!currentPeer) return alert('Nenhum peer conectado ainda!');
+      if (!text) return;
+      await p.send(currentPeer, text);
+      log(`Você enviou: ${text}`);
+      document.getElementById('msgInput').value = '';
+    };
+
+    // ==========================================
+    // 2. ARQUIVOS
+    // ==========================================
+    p.on('file', async (peer, offer) => {
+      const accept = confirm(`Receber arquivo "${offer.name}" (${Math.round(offer.size / 1024)} KB)?`);
+      if (accept) {
+        log(`Aceitou arquivo: ${offer.name}`);
+        const incoming = await offer.accept();
+        const progressEl = document.getElementById('fileProgress');
+        const progressText = document.getElementById('progressText');
+
+        incoming.on('progress', ({ received, total }) => {
+          const pct = Math.round((received / total) * 100);
+          progressEl.value = pct;
+          progressText.innerText = `${pct}%`;
+        });
+
+        incoming.on('done', async () => {
+          log(`Download completo de: ${offer.name}`);
+          const blob = await incoming.blob();
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = offer.name;
+          a.click();
+        });
+
+        incoming.on('error', err => log(`Erro no download: ${err.message}`));
+      } else {
+        offer.reject('Rejeitado pelo usuário');
+      }
+    });
+
+    document.getElementById('sendFileBtn').onclick = () => {
+      const file = document.getElementById('filePicker').files[0];
+      if (!currentPeer) return alert('Nenhum peer conectado!');
+      if (!file) return alert('Selecione um arquivo primeiro!');
+
+      const progressEl = document.getElementById('fileProgress');
+      const progressText = document.getElementById('progressText');
+      const tx = p.sendFile(currentPeer, file, { hash: true });
+
+      tx.on('progress', ({ sent, total, speed }) => {
+        const pct = Math.round((sent / total) * 100);
+        progressEl.value = pct;
+        progressText.innerText = `${pct}% (${speed} B/s)`;
+      });
+
+      tx.on('done', () => log(`Arquivo "${file.name}" enviado com sucesso!`));
+      tx.on('rejected', () => log(`O peer rejeitou o arquivo "${file.name}".`));
+      tx.on('error', err => log(`Erro no envio: ${err.message}`));
+    };
+
+    // ==========================================
+    // 3. STREAMS (Texto)
+    // ==========================================
+    p.on('stream', async (peer, readable, meta) => {
+      log(`Stream recebido (meta: ${JSON.stringify(meta)})`);
+      const output = document.getElementById('streamOutput');
+      const reader = readable.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        output.innerText += decoder.decode(value);
+        output.scrollTop = output.scrollHeight;
+      }
+      log('Stream finalizado.');
+    });
+
+    document.getElementById('startStreamBtn').onclick = async () => {
+      if (!currentPeer) return alert('Nenhum peer conectado!');
+      const writable = await p.createStream(currentPeer, { type: 'text-log' });
+      activeStreamWriter = writable.getWriter();
+      document.getElementById('startStreamBtn').disabled = true;
+      document.getElementById('stopStreamBtn').disabled = false;
+
+      let counter = 0;
+      streamInterval = setInterval(async () => {
+        if (!activeStreamWriter) return;
+        const msg = `[tick ${++counter}] `;
+        await activeStreamWriter.write(new TextEncoder().encode(msg));
+      }, 500);
+    };
+
+    document.getElementById('stopStreamBtn').onclick = async () => {
+      clearInterval(streamInterval);
+      if (activeStreamWriter) {
+        await activeStreamWriter.close();
+        activeStreamWriter = null;
+      }
+      document.getElementById('startStreamBtn').disabled = false;
+      document.getElementById('stopStreamBtn').disabled = true;
+      log('Stream de envio encerrado.');
+    };
+
+    // ==========================================
+    // 4. MÍDIA (WebRTC Nativo)
+    // ==========================================
+    
+    // Recebendo vídeo de outro peer
+    p.on('media', (peer, stream, meta) => {
+      log(`Recebendo transmissão: ${meta.type}`);
+      
+      const container = document.getElementById('mediaContainer');
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.autoplay = true;
+      video.playsInline = true;
+      // Se for a própria câmera de volta (loopback) ou para não dar microfonia, comente a linha abaixo caso queira som
+      // video.muted = true; 
+      
+      container.appendChild(video);
+
+      // Remove o vídeo automaticamente quando a transmissão parar
+      stream.getTracks()[0].addEventListener('ended', () => {
+        log(`Transmissão de ${meta.type} encerrada pelo peer.`);
+        video.remove();
+      });
+    });
+
+    // Enviando Câmera
+    document.getElementById('shareCameraBtn').onclick = async () => {
+      if (!currentPeer) return alert('Nenhum peer conectado!');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        startMedia(stream, 'Câmera');
+      } catch (err) {
+        log(`Erro ao acessar câmera: ${err.message}`);
+      }
+    };
+
+    // Enviando Tela
+    document.getElementById('shareScreenBtn').onclick = async () => {
+      if (!currentPeer) return alert('Nenhum peer conectado!');
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        startMedia(stream, 'Tela');
+        
+        // Se o usuário clicar em "Parar Compartilhamento" direto na barra do navegador:
+        stream.getVideoTracks()[0].onended = stopMedia;
+      } catch (err) {
+        log(`Erro ao capturar tela: ${err.message}`);
+      }
+    };
+
+    // Parando Transmissão Local
+    document.getElementById('stopMediaBtn').onclick = () => stopMedia();
+
+    function startMedia(stream, typeName) {
+      if (activeMediaSession) stopMedia();
+      
+      // Usa a nova API da biblioteca
+      activeMediaSession = p.sendMedia(currentPeer, stream, { type: typeName });
+      log(`Compartilhando ${typeName} com o peer...`);
+      
+      // Renderiza o próprio vídeo localmente como espelho (opcional)
+      const container = document.getElementById('mediaContainer');
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.autoplay = true;
+      video.muted = true; // Mudo local para não dar microfonia
+      video.id = 'localVideo';
+      container.appendChild(video);
+
+      document.getElementById('shareCameraBtn').disabled = true;
+      document.getElementById('shareScreenBtn').disabled = true;
+      document.getElementById('stopMediaBtn').disabled = false;
+    }
+
+    function stopMedia() {
+      if (activeMediaSession) {
+        activeMediaSession.stop();
+        activeMediaSession = null;
+        log('Transmissão encerrada.');
+      }
+      const localVideo = document.getElementById('localVideo');
+      if (localVideo) localVideo.remove();
+
+      document.getElementById('shareCameraBtn').disabled = false;
+      document.getElementById('shareScreenBtn').disabled = false;
+      document.getElementById('stopMediaBtn').disabled = true;
+    }
+
+    // Inicia a descoberta P2P
+    p.start();
+  </script>
+</body>
+</html>

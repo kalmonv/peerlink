@@ -1,0 +1,41 @@
+{
+  "name": "peerlink",
+  "version": "1.0.0",
+  "description": "P2P WebRTC signaling over WebTorrent trackers with E2E streaming and files",
+  "type": "module",
+  "main": "./dist/node.js",
+  "module": "./dist/browser.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "browser": "./dist/browser.js",
+      "node": "./dist/node.js",
+      "default": "./dist/node.js"
+    }
+  },
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build",
+    "test": "vitest run",
+    "tracker": "node scripts/start-tracker.js",
+    "testweb": "vite"
+  },
+  "dependencies": {
+    "bittorrent-tracker": "^9.17.3",
+    "uint8-util": "^2.2.4"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "vite-plugin-node-polyfills": "^0.28.0",
+    "vitest": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@roamhq/wrtc": "*"
+  },
+  "peerDependenciesMeta": {
+    "@roamhq/wrtc": {
+      "optional": true
+    }
+  }
+}

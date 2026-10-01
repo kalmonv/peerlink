@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Peerlink Browser Test Runner</title>
+</head>
+<body>
+  <h1>Peerlink Browser Test</h1>
+  <div id="status">Starting...</div>
+  <pre id="output"></pre>
+
+  <script type="module">
+    import Peerlink from '../src/browser.js';
+
+    const statusEl = document.getElementById('status');
+    const outEl = document.getElementById('output');
+    function log(msg) {
+      outEl.textContent += msg + '\n';
+    }
+
+    const identifier = 'browser-test-room-' + (location.hash || 'default');
+    const p = new Peerlink({
+      identifier,
+      trackers: ['wss://tracker.openwebtorrent.com', 'wss://tracker.webtorrent.dev']
+    });
+
+    p.on('trackerconnect', (tr) => log('Tracker connected: ' + tr));
+    p.on('peerconnect', async (peer) => {
+      statusEl.textContent = 'Connected to peer ' + peer.id;
+      log('Peer connected: ' + peer.id);
+      
+      const [_, reply] = await p.send(peer, 'hello from browser', { awaitReply: true });
+      log('Received reply: ' + reply);
+    });
+
+    p.on('msg', async (peer, msg) => {
+      log('Got msg: ' + msg.data);
+      await msg.reply('echo: ' + msg.data);
+    });
+
+    p.start().then(() => {
+      statusEl.textContent = 'Waiting for peer... Open this page in another tab.';
+    });
+  </script>
+</body>
+</html>
+

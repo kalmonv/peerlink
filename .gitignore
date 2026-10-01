@@ -1,0 +1,27 @@
+# Dependências
+node_modules/
+
+# Builds de produção (gerados pelo Vite)
+dist/
+
+# Logs de execução
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Arquivos de ambiente e locais
+.env
+.env.local
+.env.*.local
+
+# IDEs e editores
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sistema operacional
+.DS_Store
+Thumbs.db

@@ -1,0 +1,25 @@
+# Código-fonte bruto (o usuário final só precisa da pasta /dist compilada)
+src/
+
+# Exemplos e demos locais
+examples/
+demo/
+
+# Arquivos de configuração de ferramentas locais
+vite.config.js
+rollup.config.js
+.eslintrc*
+.prettierrc*
+tsconfig.json
+
+# Git
+.git/
+.gitignore
+
+# Documentação interna ou de desenvolvimento (opcional: deixe o README.md e LICENSE)
+CONTRIBUTING.md
+CHANGELOG.md
+
+# Dependências e logs
+node_modules/
+npm-debug.log*
