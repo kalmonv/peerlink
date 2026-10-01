@@ -1,17 +1,53 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8">
   <title>Peerlink Browser Demo</title>
   <style>
-    body { font-family: sans-serif; max-width: 600px; margin: 20px auto; padding: 0 10px; }
-    .card { border: 1px solid #ccc; padding: 15px; margin-bottom: 15px; border-radius: 6px; }
-    #log { background: #f4f4f4; height: 120px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 13px; }
-    progress { width: 100%; height: 20px; }
-    .media-container video { width: 100%; border-radius: 6px; background: #000; margin-top: 10px; }
-    .media-controls { display: flex; gap: 10px; margin-top: 10px; }
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 20px auto;
+      padding: 0 10px;
+    }
+
+    .card {
+      border: 1px solid #ccc;
+      padding: 15px;
+      margin-bottom: 15px;
+      border-radius: 6px;
+    }
+
+    #log {
+      background: #f4f4f4;
+      height: 120px;
+      overflow-y: auto;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 13px;
+    }
+
+    progress {
+      width: 100%;
+      height: 20px;
+    }
+
+    .media-container video {
+      width: 100%;
+      border-radius: 6px;
+      background: #000;
+      margin-top: 10px;
+    }
+
+    .media-controls {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
   </style>
 </head>
+
 <body>
   <h1>Peerlink P2P Demo</h1>
   <div id="status" class="card"><strong>Status:</strong> Aguardando conexão nos trackers...</div>
@@ -36,7 +72,9 @@
     <h3>3. Stream de Texto ao Vivo</h3>
     <button id="startStreamBtn">Iniciar Stream Contínuo</button>
     <button id="stopStreamBtn" disabled>Parar Stream</button>
-    <div id="streamOutput" style="background: #222; color: #0f0; padding: 8px; margin-top: 8px; font-family: monospace; height: 80px; overflow-y: auto;"></div>
+    <div id="streamOutput"
+      style="background: #222; color: #0f0; padding: 8px; margin-top: 8px; font-family: monospace; height: 80px; overflow-y: auto;">
+    </div>
   </div>
 
   <div class="card">
@@ -86,7 +124,7 @@
       if (currentPeer === peer) currentPeer = null;
       document.getElementById('status').innerHTML = '<strong>Status:</strong> Peer desconectado';
       log(`Peer desconectado: ${peer.id}`);
-      
+
       // Limpa os vídeos se o peer cair
       document.getElementById('mediaContainer').innerHTML = '';
     });
@@ -205,22 +243,20 @@
     // ==========================================
     // 4. MÍDIA (WebRTC Nativo)
     // ==========================================
-    
+
     // Recebendo vídeo de outro peer
     p.on('media', (peer, stream, meta) => {
       log(`Recebendo transmissão: ${meta.type}`);
-      
+
       const container = document.getElementById('mediaContainer');
       const video = document.createElement('video');
       video.srcObject = stream;
       video.autoplay = true;
       video.playsInline = true;
-      // Se for a própria câmera de volta (loopback) ou para não dar microfonia, comente a linha abaixo caso queira som
-      // video.muted = true; 
-      
+      video.muted = false; // <-- Permite ouvir o áudio do peer remoto
+
       container.appendChild(video);
 
-      // Remove o vídeo automaticamente quando a transmissão parar
       stream.getTracks()[0].addEventListener('ended', () => {
         log(`Transmissão de ${meta.type} encerrada pelo peer.`);
         video.remove();
@@ -238,15 +274,26 @@
       }
     };
 
-    // Enviando Tela
+    // Enviando Tela + Microfone (Opcional)
     document.getElementById('shareScreenBtn').onclick = async () => {
       if (!currentPeer) return alert('Nenhum peer conectado!');
       try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-        startMedia(stream, 'Tela');
-        
+        // 1. Pega a tela/janela
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+
+        // 2. Tenta pegar o microfone para acompanhar a apresentação
+        try {
+          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          // Adiciona a faixa de áudio do microfone ao stream da tela
+          micStream.getAudioTracks().forEach(track => screenStream.addTrack(track));
+        } catch (e) {
+          log('Aviso: Microfone não concedido ou indisponível, transmitindo apenas tela.');
+        }
+
+        startMedia(screenStream, 'Tela + Áudio');
+
         // Se o usuário clicar em "Parar Compartilhamento" direto na barra do navegador:
-        stream.getVideoTracks()[0].onended = stopMedia;
+        screenStream.getVideoTracks()[0].onended = stopMedia;
       } catch (err) {
         log(`Erro ao capturar tela: ${err.message}`);
       }
@@ -257,11 +304,11 @@
 
     function startMedia(stream, typeName) {
       if (activeMediaSession) stopMedia();
-      
+
       // Usa a nova API da biblioteca
       activeMediaSession = p.sendMedia(currentPeer, stream, { type: typeName });
       log(`Compartilhando ${typeName} com o peer...`);
-      
+
       // Renderiza o próprio vídeo localmente como espelho (opcional)
       const container = document.getElementById('mediaContainer');
       const video = document.createElement('video');
@@ -294,4 +341,5 @@
     p.start();
   </script>
 </body>
+
 </html>
