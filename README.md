@@ -42,6 +42,7 @@ Nem todas as funcionalidades nativas do WebRTC ou do ambiente estão disponívei
 
 ```javascript
 import Peerlink from 'peerlink'; // ou caminho relativo para /src/browser.js
+// import Peerlink from 'https://esm.sh/gh/kalmonv/peerlink/dist/browser.js';
 
 const p = new Peerlink({
   identifier: 'minha-sala-secreta',
